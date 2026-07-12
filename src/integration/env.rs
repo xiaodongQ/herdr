@@ -11,6 +11,7 @@ pub(crate) const HERDR_WORKSPACE_ID_ENV_VAR: &str = "HERDR_WORKSPACE_ID";
 
 pub(crate) const PI_CODING_AGENT_DIR_ENV_VAR: &str = "PI_CODING_AGENT_DIR";
 pub(crate) const CLAUDE_CONFIG_DIR_ENV_VAR: &str = "CLAUDE_CONFIG_DIR";
+pub(crate) const CODEBUDDY_CONFIG_DIR_ENV_VAR: &str = "CODEBUDDY_CONFIG_DIR";
 pub(crate) const CODEX_HOME_ENV_VAR: &str = "CODEX_HOME";
 pub(crate) const KIMI_CODE_HOME_ENV_VAR: &str = "KIMI_CODE_HOME";
 pub(crate) const COPILOT_HOME_ENV_VAR: &str = "COPILOT_HOME";
@@ -37,6 +38,10 @@ pub(crate) fn omp_extension_dir() -> io::Result<PathBuf> {
 
 pub(crate) fn claude_dir() -> io::Result<PathBuf> {
     config_dir_from_env_or_home(CLAUDE_CONFIG_DIR_ENV_VAR, &[".claude"])
+}
+
+pub(crate) fn codebuddy_dir() -> io::Result<PathBuf> {
+    config_dir_from_env_or_home(CODEBUDDY_CONFIG_DIR_ENV_VAR, &[".codebuddy"])
 }
 
 pub(crate) fn codex_dir() -> io::Result<PathBuf> {

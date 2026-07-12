@@ -22,6 +22,7 @@ pub(crate) fn integration_target_label(
         crate::api::schema::IntegrationTarget::Qodercli => "qodercli",
         crate::api::schema::IntegrationTarget::Cursor => "cursor",
         crate::api::schema::IntegrationTarget::Mastracode => "mastracode",
+        crate::api::schema::IntegrationTarget::Codebuddy => "codebuddy",
     }
 }
 
@@ -49,6 +50,7 @@ pub(crate) fn integration_target_command_names(
         crate::api::schema::IntegrationTarget::Qodercli => qodercli_command_names(),
         crate::api::schema::IntegrationTarget::Cursor => cursor_command_names(),
         crate::api::schema::IntegrationTarget::Mastracode => &["mastracode"],
+        crate::api::schema::IntegrationTarget::Codebuddy => &["codebuddy", "cbc"],
     }
 }
 
@@ -62,6 +64,7 @@ pub(crate) fn integration_target_supported(target: crate::api::schema::Integrati
         matches!(
             target,
             crate::api::schema::IntegrationTarget::Claude
+                | crate::api::schema::IntegrationTarget::Codebuddy
                 | crate::api::schema::IntegrationTarget::Codex
                 | crate::api::schema::IntegrationTarget::Copilot
                 | crate::api::schema::IntegrationTarget::Droid
@@ -253,7 +256,7 @@ fn integration_specs() -> [(
     crate::api::schema::IntegrationTarget,
     io::Result<PathBuf>,
     u32,
-); 14] {
+); 15] {
     [
         (
             crate::api::schema::IntegrationTarget::Pi,
@@ -269,6 +272,11 @@ fn integration_specs() -> [(
             crate::api::schema::IntegrationTarget::Claude,
             claude_dir().map(|dir| dir.join("hooks").join(super::CLAUDE_HOOK_INSTALL_NAME)),
             super::CLAUDE_INTEGRATION_VERSION,
+        ),
+        (
+            crate::api::schema::IntegrationTarget::Codebuddy,
+            codebuddy_dir().map(|dir| dir.join("hooks").join(super::CODEBUDDY_HOOK_INSTALL_NAME)),
+            super::CODEBUDDY_INTEGRATION_VERSION,
         ),
         (
             crate::api::schema::IntegrationTarget::Codex,

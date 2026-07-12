@@ -37,6 +37,17 @@ const CLAUDE_HOOK_ASSET: &str = if cfg!(windows) {
     include_str!("assets/claude/herdr-agent-state.sh")
 };
 const CLAUDE_INTEGRATION_VERSION: u32 = 7;
+const CODEBUDDY_HOOK_INSTALL_NAME: &str = if cfg!(windows) {
+    "herdr-agent-state.ps1"
+} else {
+    "herdr-agent-state.sh"
+};
+const CODEBUDDY_HOOK_ASSET: &str = if cfg!(windows) {
+    include_str!("assets/codebuddy/herdr-agent-state.ps1")
+} else {
+    include_str!("assets/codebuddy/herdr-agent-state.sh")
+};
+const CODEBUDDY_INTEGRATION_VERSION: u32 = 1;
 const CODEX_HOOK_INSTALL_NAME: &str = if cfg!(windows) {
     "herdr-agent-state.ps1"
 } else {

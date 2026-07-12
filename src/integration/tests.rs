@@ -44,6 +44,7 @@ fn agent_version_requirement_only_set_for_kimi() {
     assert_eq!(requirement.binary, "kimi");
     assert_eq!(requirement.min_version, KIMI_MIN_VERSION);
     assert!(agent_version_requirement(crate::api::schema::IntegrationTarget::Claude).is_none());
+    assert!(agent_version_requirement(crate::api::schema::IntegrationTarget::Codebuddy).is_none());
     assert!(agent_version_requirement(crate::api::schema::IntegrationTarget::Codex).is_none());
 }
 
@@ -95,6 +96,7 @@ fn enforce_agent_version_accepts_current_version() {
 fn clear_integration_path_env() {
     std::env::remove_var(PI_CODING_AGENT_DIR_ENV_VAR);
     std::env::remove_var(CLAUDE_CONFIG_DIR_ENV_VAR);
+    std::env::remove_var(CODEBUDDY_CONFIG_DIR_ENV_VAR);
     std::env::remove_var(CODEX_HOME_ENV_VAR);
     std::env::remove_var(COPILOT_HOME_ENV_VAR);
     std::env::remove_var(KIMI_CODE_HOME_ENV_VAR);

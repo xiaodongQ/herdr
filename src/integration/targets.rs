@@ -13,21 +13,22 @@ use super::config_edit::{
     remove_hook_commands, remove_kimi_config_block, remove_simple_command_hook,
 };
 use super::env::{
-    claude_dir, codex_dir, copilot_dir, cursor_dir, devin_dir, droid_dir, hermes_dir,
-    hermes_plugin_dir, kilo_dir, kimi_dir, mastracode_dir, omp_extension_dir, opencode_dir,
-    pi_extension_dir, qodercli_dir,
+    claude_dir, codebuddy_dir, codex_dir, copilot_dir, cursor_dir, devin_dir, droid_dir,
+    hermes_dir, hermes_plugin_dir, kilo_dir, kimi_dir, mastracode_dir, omp_extension_dir,
+    opencode_dir, pi_extension_dir, qodercli_dir,
 };
 use super::file_ops::{
     make_executable, remove_dir_all_if_exists, remove_file_if_exists, remove_legacy_bash_hook_file,
 };
 use super::types::{
-    ClaudeInstallPaths, ClaudeUninstallResult, CodexInstallPaths, CodexUninstallResult,
-    CopilotInstallPaths, CopilotUninstallResult, CursorInstallPaths, CursorUninstallResult,
-    DevinInstallPaths, DevinUninstallResult, DroidInstallPaths, DroidUninstallResult,
-    HermesInstallPaths, HermesUninstallResult, KiloInstallPaths, KiloUninstallResult,
-    KimiInstallPaths, KimiUninstallResult, MastracodeInstallPaths, MastracodeUninstallResult,
-    OmpInstallPaths, OmpUninstallResult, OpenCodeInstallPaths, OpenCodeUninstallResult,
-    PiUninstallResult, QodercliInstallPaths, QodercliUninstallResult,
+    ClaudeInstallPaths, ClaudeUninstallResult, CodebuddyInstallPaths, CodebuddyUninstallResult,
+    CodexInstallPaths, CodexUninstallResult, CopilotInstallPaths, CopilotUninstallResult,
+    CursorInstallPaths, CursorUninstallResult, DevinInstallPaths, DevinUninstallResult,
+    DroidInstallPaths, DroidUninstallResult, HermesInstallPaths, HermesUninstallResult,
+    KiloInstallPaths, KiloUninstallResult, KimiInstallPaths, KimiUninstallResult,
+    MastracodeInstallPaths, MastracodeUninstallResult, OmpInstallPaths, OmpUninstallResult,
+    OpenCodeInstallPaths, OpenCodeUninstallResult, PiUninstallResult, QodercliInstallPaths,
+    QodercliUninstallResult,
 };
 use super::{
     CLAUDE_HOOK_ASSET, CLAUDE_HOOK_INSTALL_NAME, CODEX_HOOK_ASSET, CODEX_HOOK_INSTALL_NAME,
@@ -159,6 +160,67 @@ pub(crate) fn install_claude() -> io::Result<ClaudeInstallPaths> {
     fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
 
     Ok(ClaudeInstallPaths {
+        hook_path,
+        settings_path,
+    })
+}
+
+pub(crate) fn install_codebuddy() -> io::Result<CodebuddyInstallPaths> {
+    let dir = codebuddy_dir()?;
+    if !dir.is_dir() {
+        return Err(io::Error::other(format!(
+            "codebuddy directory not found at {}. install codebuddy first",
+            dir.display()
+        )));
+    }
+
+    let hooks_dir = dir.join("hooks");
+    fs::create_dir_all(&hooks_dir)?;
+
+    let hook_path = hooks_dir.join(CODEBUDDY_HOOK_INSTALL_NAME);
+    fs::write(&hook_path, CODEBUDDY_HOOK_ASSET)?;
+    make_executable(&hook_path)?;
+
+    let settings_path = dir.join("settings.json");
+    let mut settings = if settings_path.is_file() {
+        serde_json::from_str::<Value>(&fs::read_to_string(&settings_path)?).map_err(|err| {
+            io::Error::other(format!(
+                "failed to parse {}: {err}",
+                settings_path.display()
+            ))
+        })?
+    } else {
+        json!({})
+    };
+
+    let hooks = ensure_hooks_object(
+        &mut settings,
+        &settings_path,
+        "codebuddy settings",
+        "codebuddy settings hooks",
+    )?;
+    remove_hook_commands(hooks, "PostToolUse", &hook_path, Some("working"))?;
+    remove_hook_commands(hooks, "PostToolUseFailure", &hook_path, Some("working"))?;
+    remove_hook_commands(hooks, "SubagentStop", &hook_path, Some("working"))?;
+    remove_hook_commands(hooks, "PermissionRequest", &hook_path, Some("blocked"))?;
+    remove_hook_commands(hooks, "SessionStart", &hook_path, Some("idle"))?;
+    remove_hook_commands(hooks, "UserPromptSubmit", &hook_path, Some("working"))?;
+    remove_hook_commands(hooks, "PreToolUse", &hook_path, Some("working"))?;
+    remove_hook_commands(hooks, "Stop", &hook_path, Some("idle"))?;
+    remove_hook_commands(hooks, "SessionEnd", &hook_path, Some("release"))?;
+    remove_hook_commands(hooks, "SessionStart", &hook_path, Some("session"))?;
+    ensure_command_hook(
+        hooks,
+        "SessionStart",
+        hook_command(&hook_path, Some("session")),
+        10,
+        Some("*"),
+    )?;
+    remove_legacy_bash_hook_file(&hook_path)?;
+
+    fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+
+    Ok(CodebuddyInstallPaths {
         hook_path,
         settings_path,
     })
@@ -604,6 +666,63 @@ pub(crate) fn uninstall_claude() -> io::Result<ClaudeUninstallResult> {
         remove_file_if_exists(&hook_path)? | remove_legacy_bash_hook_file(&hook_path)?;
 
     Ok(ClaudeUninstallResult {
+        hook_path,
+        settings_path,
+        removed_hook_file,
+        updated_settings,
+    })
+}
+
+pub(crate) fn uninstall_codebuddy() -> io::Result<CodebuddyUninstallResult> {
+    let hook_path = codebuddy_dir()?.join("hooks").join(CODEBUDDY_HOOK_INSTALL_NAME);
+    let settings_path = codebuddy_dir()?.join("settings.json");
+    let mut updated_settings = false;
+
+    if settings_path.is_file() {
+        let mut settings = serde_json::from_str::<Value>(&fs::read_to_string(&settings_path)?)
+            .map_err(|err| {
+                io::Error::other(format!(
+                    "failed to parse {}: {err}",
+                    settings_path.display()
+                ))
+            })?;
+
+        if let Some(hooks) = hooks_object_if_present(
+            &mut settings,
+            &settings_path,
+            "codebuddy settings",
+            "codebuddy settings hooks",
+        )? {
+            updated_settings |=
+                remove_hook_commands(hooks, "SessionStart", &hook_path, Some("idle"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "SessionStart", &hook_path, Some("session"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "UserPromptSubmit", &hook_path, Some("working"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "PreToolUse", &hook_path, Some("working"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "PermissionRequest", &hook_path, Some("blocked"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "PostToolUse", &hook_path, Some("working"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "PostToolUseFailure", &hook_path, Some("working"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "SubagentStop", &hook_path, Some("working"))?;
+            updated_settings |= remove_hook_commands(hooks, "Stop", &hook_path, Some("idle"))?;
+            updated_settings |=
+                remove_hook_commands(hooks, "SessionEnd", &hook_path, Some("release"))?;
+        }
+
+        if updated_settings {
+            fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+        }
+    }
+
+    let removed_hook_file =
+        remove_file_if_exists(&hook_path)? | remove_legacy_bash_hook_file(&hook_path)?;
+
+    Ok(CodebuddyUninstallResult {
         hook_path,
         settings_path,
         removed_hook_file,
