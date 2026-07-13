@@ -2592,8 +2592,25 @@ impl AppState {
                 seq,
                 session_ref,
                 session_start_source,
-            } => self
-                .update_terminal_state(pane_id, |terminal| {
+            } => {
+                // Mark the pane as seen so it appears in the sidebar with
+                // normal idle color instead of the grey "done" tint.
+                if let Some(ws) = self
+                    .workspaces
+                    .iter_mut()
+                    .find(|ws| ws.tabs.iter().any(|tab| tab.panes.contains_key(&pane_id)))
+                {
+                    if let Some(tab) = ws
+                        .tabs
+                        .iter_mut()
+                        .find(|tab| tab.panes.contains_key(&pane_id))
+                    {
+                        if let Some(pane) = tab.panes.get_mut(&pane_id) {
+                            pane.seen = true;
+                        }
+                    }
+                }
+                self.update_terminal_state(pane_id, |terminal| {
                     terminal.set_agent_session_ref_for_session_start(
                         source,
                         agent_label,
@@ -2603,7 +2620,8 @@ impl AppState {
                     )
                 })
                 .into_iter()
-                .collect(),
+                .collect()
+            }
             AppEvent::HookMetadataReported {
                 pane_id,
                 source,

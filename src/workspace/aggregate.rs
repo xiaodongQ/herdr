@@ -43,10 +43,14 @@ impl Tab {
             .filter_map(|id| {
                 let pane = self.panes.get(id)?;
                 let terminal = terminals.get(&pane.attached_terminal_id)?;
+                // Fall back to the persisted agent session so panes whose hook only reports
+                // session identity (e.g. codebuddy) still appear in the sidebar. This mirrors
+                // `TerminalState::effective_agent_label_for_display`, which the API surface
+                // already uses for the same reason.
                 let fallback_agent_label = terminal
                     .agent_name
                     .as_deref()
-                    .or_else(|| terminal.effective_agent_label())?
+                    .or_else(|| terminal.effective_agent_label_for_display())?
                     .to_string();
                 let agent_label = terminal
                     .effective_display_agent()
@@ -280,5 +284,38 @@ mod tests {
 
         assert_eq!(ws.tabs[1].number, 3);
         assert_eq!(survivor.tab_idx, 1);
+    }
+
+    #[test]
+    fn pane_details_includes_pane_with_only_persisted_agent_session() {
+        // codebuddy-style agents only report a session via the integration hook;
+        // they never set hook_authority and their manifest rules do not match the
+        // current terminal output, so detected_agent stays None. The pane must
+        // still surface in the sidebar so the agent panel reflects the running
+        // session.
+        let ws = Workspace::test_new("test");
+        let root_pane = ws.tabs[0].root_pane;
+        let mut terminals = HashMap::new();
+        let mut terminal = terminal_for_pane(&ws, root_pane);
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:codebuddy".into(),
+            agent: "codebuddy".into(),
+            session_ref: crate::agent_resume::AgentSessionRef::id(
+                "222355f8-d036-4f4d-b994-c9ac88136fba",
+            )
+            .unwrap(),
+        });
+        terminals.insert(terminal.id.clone(), terminal);
+
+        let details = ws.pane_details(&terminals);
+        let detail = details
+            .iter()
+            .find(|detail| detail.pane_id == root_pane)
+            .expect("pane with persisted agent session should appear in the sidebar");
+
+        assert_eq!(detail.agent_label, "codebuddy");
+        assert_eq!(detail.label, "codebuddy");
+        assert_eq!(detail.state, AgentState::Unknown);
+        assert!(detail.agent.is_none());
     }
 }

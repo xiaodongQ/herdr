@@ -62,10 +62,11 @@ pub enum Agent {
     Kilo,
     Qodercli,
     Maki,
+    Codebuddy,
 }
 
 impl Agent {
-    pub const SCREEN_MANIFEST_AGENTS: [Self; 19] = [
+    pub const SCREEN_MANIFEST_AGENTS: [Self; 20] = [
         Self::Pi,
         Self::Claude,
         Self::Codex,
@@ -85,6 +86,7 @@ impl Agent {
         Self::Kilo,
         Self::Qodercli,
         Self::Maki,
+        Self::Codebuddy,
     ];
 }
 
@@ -111,6 +113,7 @@ pub fn agent_label(agent: Agent) -> &'static str {
         Agent::Kilo => "kilo",
         Agent::Qodercli => "qodercli",
         Agent::Maki => "maki",
+        Agent::Codebuddy => "codebuddy",
     }
 }
 
@@ -138,6 +141,7 @@ pub fn parse_agent_label(agent: &str) -> Option<Agent> {
         "kilo" | "kilo-code" | "kilo code" => Some(Agent::Kilo),
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(Agent::Qodercli),
         "maki" => Some(Agent::Maki),
+        "codebuddy" | "cbc" => Some(Agent::Codebuddy),
         _ => None,
     }
 }
@@ -169,6 +173,7 @@ pub fn identify_agent(process_name: &str) -> Option<Agent> {
         "kilo" | "kilo-code" | "kilo code" => Some(Agent::Kilo),
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(Agent::Qodercli),
         "maki" => Some(Agent::Maki),
+        "codebuddy" | "cbc" => Some(Agent::Codebuddy),
         _ => None,
     }
 }
@@ -256,6 +261,7 @@ pub(crate) fn full_lifecycle_hook_authority(source: &str, agent_label: &str) -> 
             | ("herdr:opencode", "opencode")
             | ("herdr:kilo", "kilo")
             | ("herdr:kimi", "kimi")
+            | ("herdr:codebuddy", "codebuddy")
     )
 }
 
@@ -648,6 +654,8 @@ mod tests {
         assert_eq!(identify_agent("kilo"), Some(Agent::Kilo));
         assert_eq!(identify_agent("kilo-code"), Some(Agent::Kilo));
         assert_eq!(identify_agent("maki"), Some(Agent::Maki));
+        assert_eq!(identify_agent("codebuddy"), Some(Agent::Codebuddy));
+        assert_eq!(identify_agent("cbc"), Some(Agent::Codebuddy));
     }
 
     #[test]
@@ -674,6 +682,8 @@ mod tests {
         assert_eq!(parse_agent_label("hermes-agent"), Some(Agent::Hermes));
         assert_eq!(parse_agent_label("maki"), Some(Agent::Maki));
         assert_eq!(parse_agent_label("kilo-code"), Some(Agent::Kilo));
+        assert_eq!(parse_agent_label("codebuddy"), Some(Agent::Codebuddy));
+        assert_eq!(parse_agent_label("cbc"), Some(Agent::Codebuddy));
     }
 
     #[test]
@@ -690,6 +700,7 @@ mod tests {
         assert_eq!(agent_label(Agent::Hermes), "hermes");
         assert_eq!(agent_label(Agent::Maki), "maki");
         assert_eq!(agent_label(Agent::Kilo), "kilo");
+        assert_eq!(agent_label(Agent::Codebuddy), "codebuddy");
     }
 
     #[test]
@@ -830,6 +841,26 @@ mod tests {
         assert_eq!(
             identify_agent_in_job(&job),
             Some((Agent::Omp, "omp".to_string()))
+        );
+    }
+
+    #[test]
+    fn identify_agent_in_job_detects_node_wrapped_codebuddy() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 123,
+            processes: vec![foreground_process(
+                123,
+                "node",
+                &[
+                    "node",
+                    "/home/workspace/local/node-v24.13.0-linux-x64/bin/codebuddy",
+                ],
+            )],
+        };
+
+        assert_eq!(
+            identify_agent_in_job(&job),
+            Some((Agent::Codebuddy, "codebuddy".to_string()))
         );
     }
 

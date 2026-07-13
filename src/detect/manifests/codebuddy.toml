@@ -1,0 +1,72 @@
+id = "codebuddy"
+version = "2026.07.13.1"
+min_engine_version = 2
+updated_at = "2026-07-13T00:00:00Z"
+aliases = ["cbc"]
+
+[[rules]]
+id = "osc_title_working"
+state = "working"
+priority = 1100
+region = "osc_title"
+visible_working = true
+regex = ['^[\x{2800}-\x{28FF}] ']
+
+[[rules]]
+id = "osc_title_idle"
+state = "idle"
+priority = 250
+region = "osc_title"
+visible_idle = true
+regex = ['^\x{2733} ']
+
+[[rules]]
+id = "osc_progress_idle"
+state = "idle"
+priority = 250
+region = "osc_progress"
+regex = ['^4;0']
+
+[[rules]]
+id = "idle_prompt"
+state = "idle"
+priority = 200
+region = "prompt_box_body"
+visible_idle = true
+line_regex = ['^\s*>$']
+
+[[rules]]
+id = "idle_prompt_question_shortcut"
+state = "idle"
+priority = 150
+region = "bottom_non_empty_lines(1)"
+visible_idle = true
+contains = ["? for shortcuts"]
+
+[[rules]]
+id = "status_footer_working"
+state = "working"
+priority = 200
+region = "bottom_non_empty_lines(5)"
+visible_working = true
+line_regex = ['(?i)^\s*╰\s+\S+\s+(thinking|streaming|running tools|waiting)\s+─']
+
+[[rules]]
+id = "status_footer_blocked"
+state = "blocked"
+priority = 300
+region = "bottom_non_empty_lines(5)"
+visible_blocker = true
+any = [
+  { contains = ["waiting for approval"] },
+  { contains = ["invoke tool"] },
+  { contains = ["run this command?"] },
+  { contains = ["confirm tool call"] },
+]
+
+[[rules]]
+id = "title_bar_idle"
+state = "idle"
+priority = 100
+region = "osc_title"
+contains = ["CodeBuddy"]
