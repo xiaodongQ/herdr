@@ -281,7 +281,13 @@ impl TerminalState {
             && self
                 .persisted_agent_session
                 .as_ref()
-                .is_some_and(|session| crate::detect::parse_agent_label(&session.agent) == agent)
+                .is_some_and(|session| {
+                    let session_agent = crate::detect::parse_agent_label(&session.agent);
+                    // codebuddy-style agents report session via integration hook (no hook_authority).
+                    // When process exits with agent=None, we still need to clear the session since
+                    // there is no hook_authority to take ownership of it.
+                    session_agent == agent || (agent.is_none() && session_agent.is_some())
+                })
         {
             self.persisted_agent_session = None;
         }
@@ -1038,6 +1044,16 @@ impl TerminalState {
             );
             self.hook_authority = None;
         }
+        // Record the agent identity so screen detection can run. The session
+        // hook is the authoritative "this agent is running here" signal for
+        // session-only hooks (e.g. codebuddy), and even for full-lifecycle
+        // agents this keeps the detected agent in sync with the session so
+        // the sidebar can label the pane before the next lifecycle event
+        // arrives.
+        let detected_agent = crate::detect::parse_agent_label(&agent_label);
+        if let (None, Some(parsed)) = (self.detected_agent, detected_agent) {
+            self.detected_agent = Some(parsed);
+        }
         self.persisted_agent_session = Some(crate::agent_resume::PersistedAgentSession {
             source,
             agent: agent_label,
@@ -1248,11 +1264,31 @@ impl TerminalState {
             .or_else(|| self.detected_agent.map(crate::detect::agent_label))
     }
 
+    /// Like `effective_agent_label` but also considers persisted agent session.
+    /// Used for API display purposes.
+    pub fn effective_agent_label_for_display(&self) -> Option<&str> {
+        self.effective_agent_label().or_else(|| {
+            self.persisted_agent_session
+                .as_ref()
+                .map(|s| s.agent.as_str())
+        })
+    }
+
     pub fn effective_known_agent(&self) -> Option<Agent> {
         if let Some(authority) = &self.hook_authority {
             return crate::detect::parse_agent_label(&authority.agent_label);
         }
         self.detected_agent
+    }
+
+    /// Like `effective_known_agent` but also considers persisted agent session.
+    /// Used for screen detection when `detected_agent` is None but a session was reported.
+    pub fn effective_known_agent_for_detection(&self) -> Option<Agent> {
+        self.effective_known_agent().or_else(|| {
+            self.persisted_agent_session
+                .as_ref()
+                .and_then(|s| crate::detect::parse_agent_label(&s.agent))
+        })
     }
 
     pub fn full_lifecycle_hook_authority_active(&self) -> bool {
@@ -1778,6 +1814,52 @@ mod tests {
 
         assert!(stale.is_none());
         assert_eq!(terminal.state, AgentState::Blocked);
+    }
+
+    #[test]
+    fn session_start_sets_detected_agent_for_session_only_hooks() {
+        // codebuddy-style session hooks only report a session id, never a
+        // state. The session report is still authoritative enough to label
+        // the pane's detected agent so screen detection can run and the
+        // sidebar can show the agent even before the next probe tick.
+        let mut terminal = test_terminal();
+        assert!(terminal.detected_agent.is_none());
+
+        let mutation = terminal.set_agent_session_ref_for_session_start(
+            "herdr:codebuddy".into(),
+            "codebuddy".into(),
+            Some(
+                crate::agent_resume::AgentSessionRef::id("46e26c8d-bef0-46bf-9f54-afc65927dda1")
+                    .unwrap(),
+            ),
+            Some(10),
+            Some("startup".into()),
+        );
+
+        assert!(mutation.is_some());
+        assert_eq!(terminal.detected_agent, Some(Agent::Codebuddy));
+        assert_eq!(terminal.effective_agent_label(), Some("codebuddy"));
+    }
+
+    #[test]
+    fn session_start_does_not_overwrite_existing_detected_agent() {
+        let mut terminal = test_terminal();
+        terminal.set_detected_state(Some(Agent::Codex), AgentState::Idle);
+
+        terminal.set_agent_session_ref_for_session_start(
+            "herdr:codebuddy".into(),
+            "codebuddy".into(),
+            Some(
+                crate::agent_resume::AgentSessionRef::id("46e26c8d-bef0-46bf-9f54-afc65927dda1")
+                    .unwrap(),
+            ),
+            Some(10),
+            Some("startup".into()),
+        );
+
+        // A conflicting detected agent must not be silently rewritten by an
+        // unrelated session report.
+        assert_eq!(terminal.detected_agent, Some(Agent::Codex));
     }
 
     #[test]
