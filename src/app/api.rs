@@ -391,6 +391,8 @@ impl App {
                     runtime.set_full_lifecycle_authority_active(
                         terminal.full_lifecycle_hook_authority_active(),
                     );
+                    runtime
+                        .set_detection_known_agent(terminal.effective_known_agent_for_detection());
                 }
             }
         }

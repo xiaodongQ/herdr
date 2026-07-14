@@ -2773,8 +2773,19 @@ impl AppState {
     ) -> Option<PaneStateUpdate> {
         let observed_at = std::time::Instant::now();
         self.update_terminal_state(pane_id, |terminal| {
-            let agent = terminal.effective_known_agent().or(terminal.detected_agent);
-            if agent.is_none() && !terminal.full_lifecycle_hook_authority_active() {
+            let agent = terminal
+                .effective_known_agent()
+                .or(terminal.detected_agent)
+                .or_else(|| {
+                    terminal
+                        .persisted_agent_session
+                        .as_ref()
+                        .and_then(|s| crate::detect::parse_agent_label(&s.agent))
+                });
+            if agent.is_none()
+                && !terminal.full_lifecycle_hook_authority_active()
+                && terminal.persisted_agent_session.is_none()
+            {
                 return None;
             }
             Some(terminal.set_detected_state_with_screen_signals_at(
@@ -5223,6 +5234,74 @@ mod tests {
             state.toast.as_ref().map(|toast| toast.kind),
             Some(ToastKind::Finished)
         ));
+    }
+
+    #[test]
+    fn pane_process_exit_publishes_session_only_persisted_terminal() {
+        // Session-only agents (e.g. codebuddy) report identity only through an
+        // integration hook with no process detection and no hook_authority.
+        // On restore the persisted session is present but `detected_agent` is
+        // None. The exit publisher must still handle this pane so the stale
+        // record gets cleared instead of lingering in the sidebar.
+        let mut state = app_with_workspaces(&["active"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.ensure_test_terminals();
+        let pane_id = state.workspaces[0].tabs[0].root_pane;
+        let terminal_id = state.terminal_id_for_pane(0, pane_id).unwrap();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+                source: "herdr:codebuddy".into(),
+                agent: "codebuddy".into(),
+                session_ref: crate::agent_resume::AgentSessionRef {
+                    kind: crate::agent_resume::AgentSessionRefKind::Id,
+                    value: "session".into(),
+                },
+            });
+        assert!(state
+            .terminals
+            .get(&terminal_id)
+            .unwrap()
+            .detected_agent
+            .is_none());
+
+        let update = state
+            .publish_pane_process_exit_if_agent(pane_id)
+            .expect("session-only persisted terminal must publish on process exit");
+
+        assert_eq!(update.state, AgentState::Idle);
+        // The session-only agent is cleared within the same publish, so the
+        // update carries no known agent and the pane reverts to a plain shell.
+        assert_eq!(update.known_agent, None);
+        // The persisted session must be cleared so the pane reverts to a plain
+        // shell instead of keeping a stale codebuddy record.
+        assert!(state
+            .terminals
+            .get(&terminal_id)
+            .unwrap()
+            .persisted_agent_session
+            .is_none());
+        assert_eq!(
+            state
+                .terminals
+                .get(&terminal_id)
+                .unwrap()
+                .effective_agent_label(),
+            None
+        );
+    }
+
+    #[test]
+    fn pane_process_exit_skips_plain_shell_without_persisted() {
+        // A plain shell with no detected agent and no persisted session must
+        // not produce a process-exit update.
+        let mut state = app_with_workspaces(&["active"]);
+        state.ensure_test_terminals();
+        let pane_id = state.workspaces[0].tabs[0].root_pane;
+
+        assert!(state.publish_pane_process_exit_if_agent(pane_id).is_none());
     }
 
     #[test]

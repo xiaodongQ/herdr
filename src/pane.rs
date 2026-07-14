@@ -543,6 +543,7 @@ fn spawn_basic_detection_task(
     terminal: Arc<PaneTerminal>,
     detection_content_seq: Arc<AtomicU64>,
     full_lifecycle_authority_active: Arc<AtomicBool>,
+    detection_known_agent: Arc<Mutex<Option<Agent>>>,
     state_events: mpsc::Sender<AppEvent>,
 ) -> (
     tokio::task::AbortHandle,
@@ -614,7 +615,9 @@ fn spawn_basic_detection_task(
             release_was_active = suppressed_agent.is_some();
             let pid = child_pid.load(Ordering::Acquire);
             let mut agent_changed = false;
-            let mut agent = agent_presence.current_agent();
+            let mut agent = agent_presence
+                .current_agent()
+                .or_else(|| *detection_known_agent.lock().unwrap());
             let lifecycle_authority_active =
                 full_lifecycle_authority_active.load(Ordering::Acquire);
             let foreground_pgid = (pid > 0)
@@ -656,7 +659,13 @@ fn spawn_basic_detection_task(
                         *pending_release = None;
                     }
                 }
-                let previous_agent = agent_presence.current_agent();
+                // `previous_agent` is the agent as known *before* this probe,
+                // including the detection-known-agent mirror. Session-only
+                // agents (e.g. codebuddy, which runs as `node` and is never
+                // matched by process detection) are only known through that
+                // mirror, so without it the loop would treat their exit as a
+                // no-op and the stale persisted session would linger.
+                let previous_agent = agent;
                 let changed = match foreground_shell_agent_action(
                     previous_agent,
                     new_agent,
@@ -691,7 +700,9 @@ fn spawn_basic_detection_task(
                     last_foreground_pgid = process_group_id.or(foreground_pgid);
                 }
                 if changed {
-                    agent = agent_presence.current_agent();
+                    agent = agent_presence
+                        .current_agent()
+                        .or_else(|| *detection_known_agent.lock().unwrap());
                     agent_changed = previous_agent != agent;
                     if agent_changed {
                         pending_idle.clear();
@@ -839,6 +850,11 @@ fn spawn_basic_detection_task(
                         &mut foreground_shell_exit_reported,
                     )
                     .await;
+                    // A session-only agent exited; drop the mirror so the
+                    // surviving shell is no longer attributed to that agent.
+                    if publish_process_exited && !lifecycle_authority_active {
+                        *detection_known_agent.lock().unwrap() = None;
+                    }
                 }
             }
         }
@@ -913,6 +929,11 @@ pub struct PaneRuntime {
     kitty_keyboard_flags: Arc<AtomicU16>,
     detection_content_seq: Arc<AtomicU64>,
     full_lifecycle_authority_active: Arc<AtomicBool>,
+    // Agent identity known from a hook-reported session (no process detection),
+    // e.g. codebuddy. Mirrors full_lifecycle_authority_active: the detection loop
+    // holds only Arc<PaneTerminal>, so this shared handle lets it fall back to the
+    // hook-identified agent when process detection yields None.
+    detection_known_agent: Arc<Mutex<Option<Agent>>>,
     detect_reset_notify: Arc<Notify>,
     pending_release: Arc<Mutex<Option<PendingAgentRelease>>>,
     preserve_processes_on_drop: bool,
@@ -1765,12 +1786,14 @@ impl PaneRuntime {
         };
 
         let full_lifecycle_authority_active = Arc::new(AtomicBool::new(false));
+        let detection_known_agent = Arc::new(Mutex::new(None));
         let (detect_handle, detect_reset_notify, pending_release) = spawn_basic_detection_task(
             pane_id,
             child_pid.clone(),
             terminal.clone(),
             detection_content_seq.clone(),
             full_lifecycle_authority_active.clone(),
+            detection_known_agent.clone(),
             events,
         );
 
@@ -1785,6 +1808,7 @@ impl PaneRuntime {
             kitty_keyboard_flags,
             detection_content_seq,
             full_lifecycle_authority_active,
+            detection_known_agent,
             detect_reset_notify,
             pending_release,
             preserve_processes_on_drop: true,
@@ -1838,6 +1862,7 @@ impl PaneRuntime {
         let child_wait_completed = Arc::new(AtomicBool::new(false));
         let detection_content_seq = Arc::new(AtomicU64::new(0));
         let full_lifecycle_authority_active = Arc::new(AtomicBool::new(false));
+        let detection_known_agent = Arc::new(Mutex::new(None));
         {
             let child_pid = child_pid.clone();
             let child_wait_completed = child_wait_completed.clone();
@@ -1934,6 +1959,7 @@ impl PaneRuntime {
             let state_events = events.clone();
             let detection_content_seq = detection_content_seq.clone();
             let full_lifecycle_authority_active_for_task = full_lifecycle_authority_active.clone();
+            let detection_known_agent_for_task = detection_known_agent.clone();
             let render_notify = render_notify.clone();
             let render_dirty = render_dirty.clone();
             let detect_reset_notify = Arc::new(Notify::new());
@@ -2012,7 +2038,9 @@ impl PaneRuntime {
                     }
                     release_was_active = suppressed_agent.is_some();
                     let pid = child_pid.load(Ordering::Acquire);
-                    let mut agent = agent_presence.current_agent();
+                    let mut agent = agent_presence
+                        .current_agent()
+                        .or_else(|| *detection_known_agent_for_task.lock().unwrap());
                     let lifecycle_authority_active =
                         full_lifecycle_authority_active_for_task.load(Ordering::Acquire);
                     let foreground_pgid = (pid > 0)
@@ -2061,7 +2089,13 @@ impl PaneRuntime {
                                 }
                             }
 
-                            let previous_agent = agent_presence.current_agent();
+                            // `previous_agent` is the agent as known *before*
+                            // this probe, including the detection-known-agent
+                            // mirror, so session-only agents (e.g. codebuddy,
+                            // which runs as `node`) are correctly treated as a
+                            // previously-running agent whose exit must publish
+                            // a process-exit transition.
+                            let previous_agent = agent;
                             let changed = match foreground_shell_agent_action(
                                 previous_agent,
                                 new_agent,
@@ -2098,7 +2132,9 @@ impl PaneRuntime {
                                 last_foreground_pgid = process_group_id.or(foreground_pgid);
                             }
                             if changed {
-                                agent = agent_presence.current_agent();
+                                agent = agent_presence
+                                    .current_agent()
+                                    .or_else(|| *detection_known_agent_for_task.lock().unwrap());
                                 if agent != previous_agent {
                                     pending_idle.clear();
                                     last_screen_scan_detection_content_seq = None;
@@ -2275,6 +2311,11 @@ impl PaneRuntime {
                                 &mut foreground_shell_exit_reported,
                             )
                             .await;
+                            // A session-only agent exited; drop the mirror so
+                            // the surviving shell is no longer attributed to it.
+                            if publish_process_exited && !lifecycle_authority_active {
+                                *detection_known_agent_for_task.lock().unwrap() = None;
+                            }
                         }
                     }
                 }
@@ -2293,6 +2334,7 @@ impl PaneRuntime {
             kitty_keyboard_flags,
             detection_content_seq,
             full_lifecycle_authority_active,
+            detection_known_agent,
             detect_reset_notify,
             pending_release,
             preserve_processes_on_drop: false,
@@ -2319,6 +2361,11 @@ impl PaneRuntime {
         self.detect_reset_notify.clone()
     }
 
+    #[cfg(test)]
+    pub(crate) fn detection_known_agent_for_test(&self) -> Option<Agent> {
+        *self.detection_known_agent.lock().unwrap()
+    }
+
     pub fn set_full_lifecycle_authority_active(&self, active: bool) {
         let previous = self
             .full_lifecycle_authority_active
@@ -2326,6 +2373,14 @@ impl PaneRuntime {
         if active && !previous {
             self.detect_reset_notify.notify_one();
         }
+    }
+
+    /// Sync the agent identity known from a hook-reported session so the
+    /// detection loop can fall back to it when process detection yields None.
+    /// This is for session-only agents (e.g. codebuddy) that are identified via
+    /// an integration hook rather than by process name.
+    pub fn set_detection_known_agent(&self, agent: Option<Agent>) {
+        *self.detection_known_agent.lock().unwrap() = agent;
     }
 
     pub(crate) fn current_size(&self) -> (u16, u16) {
@@ -2733,6 +2788,7 @@ impl PaneRuntime {
                 kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
                 detection_content_seq: Arc::new(AtomicU64::new(0)),
                 full_lifecycle_authority_active: Arc::new(AtomicBool::new(false)),
+                detection_known_agent: Arc::new(Mutex::new(None)),
                 detect_reset_notify: Arc::new(Notify::new()),
                 pending_release: Arc::new(Mutex::new(None)),
                 preserve_processes_on_drop: true,
@@ -3191,6 +3247,7 @@ mod tests {
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
             detection_content_seq: Arc::new(AtomicU64::new(0)),
             full_lifecycle_authority_active: Arc::new(AtomicBool::new(false)),
+            detection_known_agent: Arc::new(Mutex::new(None)),
             detect_reset_notify: Arc::new(Notify::new()),
             pending_release: Arc::new(Mutex::new(None)),
             preserve_processes_on_drop: true,
@@ -3222,6 +3279,7 @@ mod tests {
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
             detection_content_seq: Arc::new(AtomicU64::new(0)),
             full_lifecycle_authority_active: Arc::new(AtomicBool::new(false)),
+            detection_known_agent: Arc::new(Mutex::new(None)),
             detect_reset_notify: Arc::new(Notify::new()),
             pending_release: Arc::new(Mutex::new(None)),
             preserve_processes_on_drop: true,
@@ -3234,6 +3292,25 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn detection_known_agent_mirror_stores_hook_reported_identity() {
+        // Session-only agents (e.g. codebuddy) are identified only by a hook and
+        // have no process detection. The screen-detection task reads this mirror
+        // (combined with any process-detected agent) so it can still classify the
+        // pane. The setter must store the value and the getter must surface it.
+        let runtime = crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, b"");
+        assert_eq!(runtime.detection_known_agent_for_test(), None);
+
+        runtime.set_detection_known_agent(Some(Agent::Codebuddy));
+        assert_eq!(
+            runtime.detection_known_agent_for_test(),
+            Some(Agent::Codebuddy)
+        );
+
+        runtime.set_detection_known_agent(None);
+        assert_eq!(runtime.detection_known_agent_for_test(), None);
     }
 
     #[test]

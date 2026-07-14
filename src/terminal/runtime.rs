@@ -218,8 +218,20 @@ impl TerminalRuntime {
         self.0.agent_detection_reset_notify_for_test()
     }
 
+    #[cfg(test)]
+    pub(crate) fn detection_known_agent_for_test(&self) -> Option<crate::detect::Agent> {
+        self.0.detection_known_agent_for_test()
+    }
+
     pub fn set_full_lifecycle_authority_active(&self, active: bool) {
         self.0.set_full_lifecycle_authority_active(active);
+    }
+
+    /// Mirror a hook-reported, process-undetectable agent identity into the
+    /// screen-detection task so session-only agents (e.g. codebuddy) are
+    /// detected the same way process-identified agents are.
+    pub fn set_detection_known_agent(&self, agent: Option<crate::detect::Agent>) {
+        self.0.set_detection_known_agent(agent);
     }
 
     pub fn resize(&self, rows: u16, cols: u16, cell_width_px: u32, cell_height_px: u32) {

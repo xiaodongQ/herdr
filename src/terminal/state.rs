@@ -289,6 +289,15 @@ impl TerminalState {
                     session_agent == agent || (agent.is_none() && session_agent.is_some())
                 })
         {
+            // Session-only agents (e.g. codebuddy) report identity through an
+            // integration hook with no hook_authority. Once the agent process exits
+            // there is nothing left to own that identity, so clear the detected
+            // agent too. Otherwise the pane keeps showing a stale agent record
+            // (its shell stays alive after the agent exits) instead of reverting
+            // to a plain shell.
+            if self.hook_authority.is_none() {
+                self.detected_agent = None;
+            }
             self.persisted_agent_session = None;
         }
         if self.hook_authority_not_newer_than(now)
@@ -1908,6 +1917,71 @@ mod tests {
 
         assert!(stale.is_none());
         assert_eq!(terminal.state, AgentState::Idle);
+    }
+
+    #[test]
+    fn process_exit_clears_detected_agent_for_session_only_agent() {
+        let now = Instant::now();
+        let mut terminal = test_terminal();
+        // codebuddy-style agents report identity only via an integration
+        // session hook (no hook_authority). They are identified purely through
+        // `detected_agent` + `persisted_agent_session`.
+        terminal.set_detected_state(Some(Agent::Codebuddy), AgentState::Working);
+        terminal.set_agent_session_ref_for_session_start(
+            "herdr:codebuddy".into(),
+            "codebuddy".into(),
+            Some(crate::agent_resume::AgentSessionRef {
+                kind: crate::agent_resume::AgentSessionRefKind::Id,
+                value: "session".into(),
+            }),
+            Some(10),
+            None,
+        );
+
+        assert_eq!(terminal.detected_agent, Some(Agent::Codebuddy));
+        assert!(terminal.persisted_agent_session.is_some());
+
+        terminal.set_detected_state_with_screen_signals_at(
+            Some(Agent::Codebuddy),
+            AgentState::Idle,
+            false,
+            true,
+            false,
+            true,
+            now + Duration::from_millis(1),
+        );
+
+        // No hook_authority owns the identity, so on process exit both the
+        // persisted session and the detected agent must be cleared. Otherwise
+        // the pane keeps showing a stale codebuddy record after the agent
+        // process exits (its shell stays alive).
+        assert!(terminal.hook_authority.is_none());
+        assert!(terminal.persisted_agent_session.is_none());
+        assert_eq!(terminal.detected_agent, None);
+        assert_eq!(terminal.effective_agent_label(), None);
+    }
+
+    #[test]
+    fn effective_known_agent_for_detection_uses_persisted_session() {
+        let mut terminal = test_terminal();
+        // Session-only agents report identity only via the integration hook,
+        // so `detected_agent` stays None but a persisted session exists. Screen
+        // detection must still be able to read the agent from the persisted
+        // session, which is what feeds the detection-known-agent mirror.
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:codebuddy".into(),
+            agent: "codebuddy".into(),
+            session_ref: crate::agent_resume::AgentSessionRef {
+                kind: crate::agent_resume::AgentSessionRefKind::Id,
+                value: "session".into(),
+            },
+        });
+        assert_eq!(terminal.detected_agent, None);
+        assert_eq!(terminal.effective_known_agent(), None);
+        assert_eq!(
+            terminal.effective_known_agent_for_detection(),
+            Some(Agent::Codebuddy)
+        );
     }
 
     #[test]
