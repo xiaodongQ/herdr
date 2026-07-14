@@ -5,20 +5,13 @@ updated_at = "2026-07-13T00:00:00Z"
 aliases = ["cbc"]
 
 [[rules]]
-id = "osc_title_working"
-state = "working"
-priority = 1100
-region = "osc_title"
-visible_working = true
-regex = ['^[\x{2800}-\x{28FF}] ']
-
-[[rules]]
 id = "osc_title_idle"
 state = "idle"
 priority = 250
 region = "osc_title"
 visible_idle = true
-regex = ['^\x{2733} ']
+# Idle: ✺ 前缀，且没有活动指标（· 或 tokens）
+regex = ['^\x{273A}[^·]*$']
 
 [[rules]]
 id = "osc_progress_idle"
@@ -46,10 +39,28 @@ contains = ["? for shortcuts"]
 [[rules]]
 id = "status_footer_working"
 state = "working"
-priority = 200
+priority = 210
 region = "bottom_non_empty_lines(5)"
 visible_working = true
-line_regex = ['(?i)^\s*╰\s+\S+\s+(thinking|streaming|running tools|waiting)\s+─']
+# 只有在 title 有活动指标时，底部的 streaming/writing 才表示 working
+# 如果 title 无活动指标且显示 prompt，agent 就是 idle
+any = [
+  { contains = ["streaming"] },
+  { contains = ["writing"] },
+]
+
+[[rules]]
+id = "osc_title_working"
+state = "working"
+priority = 260
+region = "osc_title"
+visible_working = true
+# 通用活动指标：任意包含 · 或 tokens 或 streaming 的 title 都是 working
+any = [
+  { regex = ['·'] },
+  { contains = ["tokens"] },
+  { contains = ["streaming"] },
+]
 
 [[rules]]
 id = "status_footer_blocked"
@@ -62,6 +73,9 @@ any = [
   { contains = ["invoke tool"] },
   { contains = ["run this command?"] },
   { contains = ["confirm tool call"] },
+  { contains = ["Submit"] },
+  { contains = ["操作"] },
+  { regex = ['☐'] },
 ]
 
 [[rules]]
