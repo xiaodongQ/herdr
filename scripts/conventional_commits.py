@@ -24,7 +24,12 @@ def git_subjects(rev_range: str) -> list[str]:
     output = subprocess.check_output(
         ["git", "log", "--pretty=format:%s", rev_range], text=True
     ).strip()
-    return [line.strip() for line in output.splitlines() if line.strip()]
+    subjects = []
+    for line in output.splitlines():
+        line = line.strip()
+        if line and not line.startswith("Merge "):
+            subjects.append(line)
+    return subjects
 
 
 def valid_subject(subject: str) -> bool:
