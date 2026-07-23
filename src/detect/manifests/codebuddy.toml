@@ -1,67 +1,174 @@
 id = "codebuddy"
-version = "2026.07.13.1"
+version = "2026.07.23.3"
 min_engine_version = 2
-updated_at = "2026-07-13T00:00:00Z"
+updated_at = "2026-07-23T00:00:00Z"
 aliases = ["cbc"]
 
+# Working: 检测屏幕正文中的状态词
 [[rules]]
-id = "osc_title_idle"
-state = "idle"
-priority = 250
-region = "osc_title"
-visible_idle = true
-# Idle: ✺ 前缀，且没有活动指标（· 或 tokens）
-regex = ['^\x{273A}[^·]*$']
-
-[[rules]]
-id = "osc_progress_idle"
-state = "idle"
-priority = 250
-region = "osc_progress"
-regex = ['^4;0']
-
-[[rules]]
-id = "idle_prompt"
-state = "idle"
-priority = 200
-region = "prompt_box_body"
-visible_idle = true
-line_regex = ['^\s*>$']
-
-[[rules]]
-id = "idle_prompt_question_shortcut"
-state = "idle"
-priority = 150
-region = "bottom_non_empty_lines(1)"
-visible_idle = true
-contains = ["? for shortcuts"]
-
-[[rules]]
-id = "status_footer_working"
+id = "status_body_working"
 state = "working"
-priority = 210
+priority = 500
 region = "bottom_non_empty_lines(5)"
 visible_working = true
-# 只有在 title 有活动指标时，底部的 streaming/writing 才表示 working
-# 如果 title 无活动指标且显示 prompt，agent 就是 idle
 any = [
-  { contains = ["streaming"] },
-  { contains = ["writing"] },
+  { contains = ["Waking"] },
+  { contains = ["Booting"] },
+  { contains = ["Scanning"] },
+  { contains = ["Charging"] },
+  { contains = ["Updating"] },
+  { contains = ["Syncing"] },
+  { contains = ["Processing"] },
+  { contains = ["Browsing"] },
+  { contains = ["Calculating"] },
+  { contains = ["Pairing"] },
+  { contains = ["Beeping"] },
+  { contains = ["Blinking"] },
+  { contains = ["Rotating"] },
+  { contains = ["Rolling"] },
+  { contains = ["Spinning"] },
+  { contains = ["Buzzing"] },
+  { contains = ["Streaming"] },
+  { contains = ["Fetching"] },
+  { contains = ["Sending"] },
+  { contains = ["Initializing"] },
+  { contains = ["Cleaning"] },
+  { contains = ["Tidying"] },
+  { contains = ["Delivering"] },
+  { contains = ["Sorting"] },
+  { contains = ["Cooking"] },
+  { contains = ["Mixing"] },
+  { contains = ["Sweeping"] },
+  { contains = ["Greeting"] },
+  { contains = ["Recording"] },
+  { contains = ["Measuring"] },
+  { contains = ["Adapting"] },
+  { contains = ["Repairing"] },
+  { contains = ["Learning"] },
+  { contains = ["Analyzing"] },
+  { contains = ["Linking"] },
+  { contains = ["Watching"] },
+  { contains = ["Mapping"] },
+  { contains = ["Waving"] },
+  { contains = ["Dancing"] },
+  { contains = ["Listening"] },
+  { contains = ["Mimicking"] },
+  { contains = ["Protecting"] },
+  { contains = ["Exploring"] },
+  { contains = ["Tuning"] },
+  { contains = ["Ticking"] },
+  { contains = ["Dreaming"] },
+  { contains = ["Resetting"] },
+  { contains = ["Upgrading"] },
+  { contains = ["Notifying"] },
+  { contains = ["Printing"] },
+  { contains = ["Testing"] },
+  { contains = ["Refreshing"] },
+  { contains = ["Suggesting"] },
+  { contains = ["Observing"] },
+  { contains = ["Hovering"] },
+  { contains = ["Locating"] },
+  { contains = ["Joking"] },
+  { contains = ["Chilling"] },
+  { contains = ["Reporting"] },
+  { contains = ["Following"] },
+  { contains = ["Guiding"] },
+  { contains = ["Celebrating"] },
+  { contains = ["Reminding"] },
+  { contains = ["Logging"] },
+  { contains = ["Flashing"] },
+  { contains = ["Swiping"] },
+  { contains = ["Calling"] },
+  { contains = ["Connecting"] },
+  { contains = ["Zooming"] },
+  { contains = ["Detecting"] },
+  { contains = ["Monitoring"] },
+  { contains = ["tokens"] },
 ]
 
+# Working: osc_title 中的状态词
 [[rules]]
-id = "osc_title_working"
+id = "status_working"
 state = "working"
-priority = 260
+priority = 500
 region = "osc_title"
 visible_working = true
-# 通用活动指标：任意包含 · 或 tokens 或 streaming 的 title 都是 working
 any = [
-  { regex = ['·'] },
   { contains = ["tokens"] },
   { contains = ["streaming"] },
+  { contains = ["Waking"] },
+  { contains = ["Booting"] },
+  { contains = ["Scanning"] },
+  { contains = ["Charging"] },
+  { contains = ["Updating"] },
+  { contains = ["Syncing"] },
+  { contains = ["Processing"] },
+  { contains = ["Browsing"] },
+  { contains = ["Calculating"] },
+  { contains = ["Pairing"] },
+  { contains = ["Beeping"] },
+  { contains = ["Blinking"] },
+  { contains = ["Rotating"] },
+  { contains = ["Rolling"] },
+  { contains = ["Spinning"] },
+  { contains = ["Buzzing"] },
+  { contains = ["Fetching"] },
+  { contains = ["Sending"] },
+  { contains = ["Initializing"] },
+  { contains = ["Cleaning"] },
+  { contains = ["Tidying"] },
+  { contains = ["Delivering"] },
+  { contains = ["Sorting"] },
+  { contains = ["Cooking"] },
+  { contains = ["Mixing"] },
+  { contains = ["Sweeping"] },
+  { contains = ["Greeting"] },
+  { contains = ["Recording"] },
+  { contains = ["Measuring"] },
+  { contains = ["Adapting"] },
+  { contains = ["Repairing"] },
+  { contains = ["Learning"] },
+  { contains = ["Analyzing"] },
+  { contains = ["Linking"] },
+  { contains = ["Watching"] },
+  { contains = ["Mapping"] },
+  { contains = ["Waving"] },
+  { contains = ["Dancing"] },
+  { contains = ["Listening"] },
+  { contains = ["Mimicking"] },
+  { contains = ["Protecting"] },
+  { contains = ["Exploring"] },
+  { contains = ["Tuning"] },
+  { contains = ["Ticking"] },
+  { contains = ["Dreaming"] },
+  { contains = ["Resetting"] },
+  { contains = ["Upgrading"] },
+  { contains = ["Notifying"] },
+  { contains = ["Printing"] },
+  { contains = ["Testing"] },
+  { contains = ["Refreshing"] },
+  { contains = ["Suggesting"] },
+  { contains = ["Observing"] },
+  { contains = ["Hovering"] },
+  { contains = ["Locating"] },
+  { contains = ["Joking"] },
+  { contains = ["Chilling"] },
+  { contains = ["Reporting"] },
+  { contains = ["Following"] },
+  { contains = ["Guiding"] },
+  { contains = ["Celebrating"] },
+  { contains = ["Reminding"] },
+  { contains = ["Logging"] },
+  { contains = ["Flashing"] },
+  { contains = ["Swiping"] },
+  { contains = ["Calling"] },
+  { contains = ["Connecting"] },
+  { contains = ["Zooming"] },
+  { contains = ["Detecting"] },
+  { contains = ["Monitoring"] },
 ]
 
+# Blocked: approval prompts
 [[rules]]
 id = "status_footer_blocked"
 state = "blocked"
@@ -78,6 +185,7 @@ any = [
   { regex = ['☐'] },
 ]
 
+# Idle: CodeBuddy in title with no activity
 [[rules]]
 id = "title_bar_idle"
 state = "idle"
